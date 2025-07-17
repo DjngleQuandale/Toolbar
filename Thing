@@ -1,0 +1,55 @@
+
+---------------------------------------------------------------------
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService      = game:GetService("TweenService")
+local UserInputService  = game:GetService("UserInputService")
+
+local player       = Players.LocalPlayer
+local abilityRemote = ReplicatedStorage:WaitForChild("AbilityEvent")
+
+
+    {
+        Name     = "Meteor Punch",
+        Key      = Enum.KeyCode.Z,
+        Cooldown = 5,             -- seconds
+        Anim     = 12345678910,   -- <-- YOUR ANIMATION ID
+        Icon     = "rbxassetid://0000000001"
+    },
+    {
+        Name     = "Ground Smash",
+        Key      = Enum.KeyCode.X,
+        Cooldown = 8,
+        Anim     = 1122334455,
+        Icon     = "rbxassetid://0000000002"
+    },
+    {
+        Name     = "Dragon Kick",
+        Key      = Enum.KeyCode.C,
+        Cooldown = 6,
+        Anim     = 2233445566,
+        Icon     = "rbxassetid://0000000003"
+    }
+}
+
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "BattleToolbar"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local bar = Instance.new("Frame")
+bar.AnchorPoint = Vector2.new(0.5, 1)
+bar.Position = UDim2.new(0.5, 0, 1, -20)
+bar.Size = UDim2.new(0, (#Moves * 80) + 10, 0, 70)
+bar.BackgroundTransparency = 1
+bar.Parent = gui
+
+for i, move in ipairs(Moves) do
+    local btn = Instance.new("ImageButton")
+    btn.Name = move.Name
+    btn.Image = move.Icon
+    btn.Size  = UDim2.new(0, 64, 0, 64)
+    btn.Position = UDim2.new(0, (i-1)*80 + 5, 0, 0)
+    btn.AutoButtonColor = false
+    btn.Parent = bar
