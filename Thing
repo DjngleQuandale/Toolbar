@@ -1,4 +1,13 @@
+--[[  Strongest Battleground-style Toolbar & Abilities
+     -------------------------------------------------
+     ▸ Part 1 – LOCAL SCRIPT  (place in StarterPlayerScripts)
+     ▸ Part 2 – SERVER SCRIPT (place in ServerScriptService)
+     ▸ Requires a RemoteEvent named “AbilityEvent” in ReplicatedStorage
+     ▸ For production add extra server-side cooldown & anti-exploit checks.
+--]]
 
+---------------------------------------------------------------------
+--  ▸▸  PART 1  –  LOCAL SCRIPT : StarterPlayerScripts/StrongestToolbar.lua
 ---------------------------------------------------------------------
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -8,7 +17,8 @@ local UserInputService  = game:GetService("UserInputService")
 local player       = Players.LocalPlayer
 local abilityRemote = ReplicatedStorage:WaitForChild("AbilityEvent")
 
-
+--// CONFIG – add more moves by duplicating an entry
+local Moves = {
     {
         Name     = "Meteor Punch",
         Key      = Enum.KeyCode.Z,
@@ -32,7 +42,9 @@ local abilityRemote = ReplicatedStorage:WaitForChild("AbilityEvent")
     }
 }
 
-
+---------------------------------------------------------------------
+-- UI construction
+---------------------------------------------------------------------
 local gui = Instance.new("ScreenGui")
 gui.Name = "BattleToolbar"
 gui.ResetOnSpawn = false
@@ -53,3 +65,159 @@ for i, move in ipairs(Moves) do
     btn.Position = UDim2.new(0, (i-1)*80 + 5, 0, 0)
     btn.AutoButtonColor = false
     btn.Parent = bar
+
+    local cd = Instance.new("Frame")
+    cd.Name = "CooldownOverlay"
+    cd.Size = UDim2.new(1,0,1,0)
+    cd.BackgroundColor3 = Color3.new(0,0,0)
+    cd.BackgroundTransparency = 0.6
+    cd.Visible = false
+    cd.Parent = btn
+
+    local key = Instance.new("TextLabel")
+    key.Size = UDim2.new(1,0,0,14)
+    key.Position = UDim2.new(0,0,1,-14)
+    key.BackgroundTransparency = 1
+    key.Font = Enum.Font.GothamBold
+    key.TextScaled = true
+    key.TextColor3 = Color3.new(1,1,1)
+    key.Text = move.Key.Name
+    key.Parent = btn
+
+    move._Button  = btn
+    move._Overlay = cd
+    move._Ready   = true
+end
+
+---------------------------------------------------------------------
+-- Cooldown & input helpers
+---------------------------------------------------------------------
+local function fireAbility(move)
+    if not move._Ready then return end
+    move._Ready = false
+    move._Overlay.Visible = true
+
+    -- wipe-down visual cooldown
+    move._Overlay.Size     = UDim2.new(1,0,1,0)
+    move._Overlay.Position = UDim2.new(0,0,0,0)
+    TweenService:Create(
+        move._Overlay,
+        TweenInfo.new(move.Cooldown, Enum.EasingStyle.Linear),
+        { Size = UDim2.new(1,0,0,0), Position = UDim2.new(0,0,1,0) }
+    ):Play()
+
+    task.delay(move.Cooldown, function()
+        move._Overlay.Visible = false
+        move._Ready = true
+    end)
+
+    abilityRemote:FireServer(move.Name)
+end
+
+-- mouse clicks
+for _, move in ipairs(Moves) do
+    move._Button.MouseButton1Click:Connect(function()
+        fireAbility(move)
+    end)
+end
+
+-- keyboard binds
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end -- game already processed (e.g., chat)
+    for _, move in ipairs(Moves) do
+        if input.KeyCode == move.Key then
+            fireAbility(move)
+        end
+    end
+end)
+
+---------------------------------------------------------------------
+--  ▸▸  PART 2  –  SERVER SCRIPT : ServerScriptService/AbilityHandler.lua
+---------------------------------------------------------------------
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Debris            = game:GetService("Debris")
+local TweenService      = game:GetService("TweenService")
+
+-- create RemoteEvent once if it’s missing
+local abilityRemote = ReplicatedStorage:FindFirstChild("AbilityEvent")
+if not abilityRemote then
+    abilityRemote = Instance.new("RemoteEvent")
+    abilityRemote.Name = "AbilityEvent"
+    abilityRemote.Parent = ReplicatedStorage
+end
+
+-- animation lookup
+local Animations = {
+    ["Meteor Punch"] = 12345678910,
+    ["Ground Smash"] = 1122334455,
+    ["Dragon Kick"]  = 2233445566,
+}
+
+-- basic cooldown store per-player
+local cdStore = {}
+local function canCast(player, name, cd)
+    cdStore[player] = cdStore[player] or {}
+    local t = cdStore[player][name] or 0
+    if tick() < t then return false end
+    cdStore[player][name] = tick() + cd
+    return true
+end
+
+abilityRemote.OnServerEvent:Connect(function(player, abilityName)
+    local animId = Animations[abilityName]
+    if not animId then return end
+
+    -- match client cooldown table
+    local cd = 0
+    for _, v in ipairs({
+        {Name="Meteor Punch", Cooldown=5},
+        {Name="Ground Smash", Cooldown=8},
+        {Name="Dragon Kick",  Cooldown=6}
+    }) do
+        if v.Name == abilityName then cd = v.Cooldown break end
+    end
+    if not canCast(player, abilityName, cd) then return end
+
+    local char = player.Character
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+    local anim = Instance.new("Animation")
+    anim.AnimationId = "rbxassetid://" .. animId
+    local track = animator:LoadAnimation(anim)
+    track:Play()
+
+    -----------------------------------------------------------------
+    -- Example VFX (swap out for your own fancy effects & hitboxes)
+    -----------------------------------------------------------------
+    if abilityName == "Meteor Punch" then
+        local hitPos = char.HumanoidRootPart.Position + char.HumanoidRootPart.CFrame.LookVector * 5
+        local explosion = Instance.new("Explosion")
+        explosion.Position      = hitPos
+        explosion.BlastRadius   = 10
+        explosion.BlastPressure = 50000
+        explosion.Parent = workspace
+
+    elseif abilityName == "Ground Smash" then
+        local shock = Instance.new("Part")
+        shock.Size = Vector3.new(1,1,1)
+        shock.Shape = Enum.PartType.Ball
+        shock.Material = Enum.Material.Neon
+        shock.Position = char.HumanoidRootPart.Position
+        shock.Anchored = true
+        shock.CanCollide = false
+        shock.Color = Color3.new(1,1,1)
+        shock.Parent = workspace
+        TweenService:Create(
+            shock,
+            TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Size = Vector3.new(30,0.2,30), Transparency = 1}
+        ):Play()
+        Debris:AddItem(shock, 0.6)
+
+    elseif abilityName == "Dragon Kick" then
+        local root = char.HumanoidRootPart
+        root.Velocity = root.CFrame.LookVector * 100
+    end
+end)
